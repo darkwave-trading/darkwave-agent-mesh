@@ -11,7 +11,7 @@ An agent mesh for Kubernetes, on NATS.
 
 The Agent Mesh runs AI agents on Kubernetes. Each Agent is declared in a Markdown file: the messages it handles, the model or script that proposes its actions, and the actions it may take. An action not listed is refused; one marked `hold` waits for a person. Every step is recorded before the next is taken, and no action is performed twice on the Agent Mesh's own initiative.
 
-Coming soon
+**Coming soon**
 
 ## What it is
 
