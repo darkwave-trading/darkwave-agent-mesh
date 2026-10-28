@@ -1,34 +1,30 @@
-"""The README figure, The Gate: a bookkeeping example, drawn to the Darkwave Schematic rules.
+"""The README figure, The Gate: how the Gate decides one proposed action, as a UML sequence diagram read top to
+bottom, with the Gate's three outcomes as the operands of one alt frame. Run: DARKWAVE_BRAND_DIR=<brand dir> python3 gate.py <out dir>"""
+from __future__ import annotations
 
-Run: DARKWAVE_BRAND_DIR=<brand dir> python3 gate.py <out dir>"""
 import sys
-from kit import Fig
+from pathlib import Path
+from seq import Seq
 
-W, H = 960, 592
-COLS = (64, 352, 640)
-NW = 256
-# (rule node, its subtitle, outcome node, its subtitle), one per column
-RULES = [('Record a bill', 'Allow rule', 'Performed at most once', 'Through its gateway'),
-         ('Pay a bill', 'Hold rule', 'Approval queued', 'For the Operator'),
-         ('Delete a bill', 'No rule matches it', 'Refused', 'And recorded')]
-
-def build(mode):
-    f = Fig(W, H, "The Gate: the Book-Keeper's rules decide each proposed action",
-            "A supplier invoice arrives; the Book-Keeper's proposer, a model, proposes one action; the Gate matches it against the Book-Keeper's rules. Three possible proposals are shown. Record a bill: an allow rule, so it is performed at most once. Pay a bill: a hold rule, so an approval is queued for the Operator. Delete a bill: no rule matches it, so it is refused and recorded. Arrows show who calls whom.", mode)
-    cx = COLS[1] + NW / 2
-    f.node(COLS[1], 40, NW, 64, 'outside', 'Supplier invoice arrives', 'A message to the Book-Keeper')
-    f.arrow([(cx, 104), (cx, 152)])
-    f.node(COLS[1], 152, NW, 64, 'product', 'Proposer: a model', 'Proposes one action')
-    f.arrow([(cx, 216), (cx, 264)])
-    f.t('inter-regular', 'Three possible proposals', 12, cx + 12, 244, f.sub)
-    f.zone(40, 264, 880, 136, "Gate: the Book-Keeper's rules")
-    for x, (rule, rsub, out, osub) in zip(COLS, RULES):
-        f.node(x, 312, NW, 64, 'product', rule, rsub)
-        f.arrow([(x + NW / 2, 376), (x + NW / 2, 448)])
-        f.node(x, 448, NW, 64, 'product', out, osub)
-    f.legend(40, 552)
-    return f.svg()
+def build(mode: str) -> str:
+    s = Seq('The Gate: How It Decides One Action',
+            "A UML sequence diagram, read top to bottom, of the Book-Keeper handling a supplier invoice, with five lifelines: the agent runtime, the proposer, the Gate, the agent MCP gateway and Xero. A supplier invoice arrives at the agent runtime, which asks the proposer to propose one action; the proposer returns an action. The agent runtime asks the Gate to decide, and the Gate returns allow, hold or refuse. Then one of three alternatives. Allow, to record a bill: the agent runtime asks the agent MCP gateway to create the bill, at most once, and the gateway creates it in Xero. Hold, to pay a bill: a note says an approval waits for the Operator. Refuse, to delete a bill, which no rule matches: a note says it is refused and recorded. Every step is recorded before the next.", mode,
+            [('Agent Runtime', 'product'), ('Proposer', 'outside'), ('Gate', 'product'), ('Agent MCP Gateway', 'product'), ('Xero', 'outside')], left=120)
+    s.found('Agent Runtime', 'a supplier invoice')
+    s.msg('Agent Runtime', 'Proposer', 'propose one action')
+    s.msg('Proposer', 'Agent Runtime', 'an action')
+    s.msg('Agent Runtime', 'Gate', 'decide')
+    s.msg('Gate', 'Agent Runtime', 'allow, hold or refuse')
+    s.alt('[allow] record a bill')
+    s.msg('Agent Runtime', 'Agent MCP Gateway', 'create the bill, at most once')
+    s.msg('Agent MCP Gateway', 'Xero', 'create the bill')
+    s.alt('[hold] pay a bill')
+    s.note('Agent Runtime', 'an approval waits for the Operator')
+    s.alt('[refuse] delete a bill, no rule matches')
+    s.note('Agent Runtime', 'refused and recorded')
+    s.end_alt()
+    return s.end(('product', 'outside'), ('One branch of the frame happens; dotted lines divide them.', 'Every step is recorded before the next.'))
 
 if __name__ == '__main__':
     for mode in ('light', 'dark'):
-        open(f'{sys.argv[1]}/agent-mesh-gate-{mode}.svg', 'w').write(build(mode))
+        (Path(sys.argv[1]) / f'agent-mesh-gate-{mode}.svg').write_text(build(mode))
