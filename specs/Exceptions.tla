@@ -1,12 +1,14 @@
 ----------------------------- MODULE Exceptions -----------------------------
 (***************************************************************************)
-(* One Approval in the Agent Runtime's exceptions queue, and the handling  *)
+(* One Approval in the Agent Mesh's exceptions queue, and the handling  *)
 (* waiting on it. Answers (approve, refuse, expire) race; each is a claim  *)
 (* in the record keyed by the exception id alone, so exactly one wins.     *)
 (* `ExceptionRepo` then follows the winner by a compare-and-set from Open; *)
 (* a caller may crash between the two, so the stores can diverge, and the  *)
-(* timer repairs `ExceptionRepo` from the record. `RecoverMessages`        *)
-(* resumes the handling from the record, never from `ExceptionRepo`.       *)
+(* control API repairs `ExceptionRepo` from the record on its recurring    *)
+(* repair schedule. The actor "expiry" is the control API writing a fired *)
+(* expiry, an @at scheduled message of NATS. `RecoverMessages` resumes the *)
+(* handling from the record, never from `ExceptionRepo`.                   *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -16,7 +18,7 @@ CONSTANTS Callers,       \* operator callers that may answer at once, e.g. {c1, 
           MaxCrashes     \* bound on crashes
 
 Answers == {"approved", "refused", "expired"}
-Actors == Callers \cup {"timer"}
+Actors == Callers \cup {"expiry"}  \* "expiry": the control API writing a fired expiry
 
 VARIABLES
   now,                   \* the Clock, in ticks
@@ -48,10 +50,12 @@ Init ==
 
 (* ----- answering: ApproveAction, RefuseAction, ExpireException ----- *)
 
-\* The operator calls ApproveAction or RefuseAction; the timer calls ExpireException.
+\* The operator calls ApproveAction or RefuseAction; when the expiry's scheduled message fires,
+\* the control API calls ExpireException. A claim refused as not yet due leaves the fired message
+\* unacknowledged, so it is redelivered and the control API calls again (the fairness on "expiry").
 Call(a) ==
   /\ pc[a] = "idle" /\ reply[a] = "none"
-  /\ \E w \in (IF a = "timer" THEN {"expired"} ELSE {"approved", "refused"}) :
+  /\ \E w \in (IF a = "expiry" THEN {"expired"} ELSE {"approved", "refused"}) :
         want' = [want EXCEPT ![a] = w]
   /\ pc' = [pc EXCEPT ![a] = "claim"]
   /\ UNCHANGED <<now, rec, recAt, repo, reply, resumed, crashes>>
@@ -62,10 +66,10 @@ Call(a) ==
 \* before the claim would open a window (Use Cases: The Message Path, S3 step 4).
 Claim(a) ==
   /\ pc[a] = "claim"
-  /\ IF a # "timer" /\ now >= Expiry /\ rec = "none" THEN
+  /\ IF a # "expiry" /\ now >= Expiry /\ rec = "none" THEN
         /\ reply' = [reply EXCEPT ![a] = "late"] /\ pc' = [pc EXCEPT ![a] = "done"]
         /\ UNCHANGED <<rec, recAt, want>>
-     ELSE IF a = "timer" /\ now < Expiry THEN               \* not yet due: nothing
+     ELSE IF a = "expiry" /\ now < Expiry THEN              \* not yet due: nothing
         /\ pc' = [pc EXCEPT ![a] = "idle"] /\ want' = [want EXCEPT ![a] = "none"]
         /\ UNCHANGED <<rec, recAt, reply>>
      ELSE IF rec = "none" THEN                               \* this answer wins
@@ -93,13 +97,13 @@ Crash(a) ==
   /\ pc' = [pc EXCEPT ![a] = "done"] /\ crashes' = crashes + 1
   /\ UNCHANGED <<now, rec, recAt, repo, want, reply, resumed>>
 
-(* ----- the timer and recovery ----- *)
+(* ----- the clock, the repair and recovery ----- *)
 
 Tick ==
   /\ now < MaxTime /\ now' = now + 1
   /\ UNCHANGED <<rec, recAt, repo, pc, want, reply, resumed, crashes>>
 
-\* The record wins: the timer sets ExceptionRepo to the record's answer.
+\* The record wins: the control API's repair sets ExceptionRepo to the record's answer.
 Repair ==
   /\ rec # "none" /\ repo # rec
   /\ repo' = rec
@@ -116,7 +120,7 @@ Next == \/ \E a \in Actors : Call(a) \/ Claim(a) \/ Follow(a) \/ Crash(a)
 
 Fairness ==
   /\ WF_vars(Tick) /\ WF_vars(Repair) /\ WF_vars(Resume)
-  /\ WF_vars(Call("timer")) /\ WF_vars(Claim("timer"))
+  /\ WF_vars(Call("expiry")) /\ WF_vars(Claim("expiry"))
   /\ \A a \in Actors : WF_vars(Claim(a)) /\ WF_vars(Follow(a))
 
 Spec == Init /\ [][Next]_vars /\ Fairness

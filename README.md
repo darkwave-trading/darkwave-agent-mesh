@@ -9,7 +9,7 @@
 </picture>
 <!-- markdownlint-enable MD033 MD041 -->
 
-An agent mesh for Kubernetes, on NATS.
+An agent mesh for [Kubernetes](https://kubernetes.io/), on [NATS](https://nats.io/).
 
 The Agent Mesh runs AI agents on Kubernetes. Each Agent is declared in a Markdown file: the messages it handles, the model, script or person that proposes its actions, and the actions it may take. An action not listed is refused; one marked `hold` waits for a person. Every step is recorded before the next is taken, and no action is performed twice on the Agent Mesh's own initiative.
 
@@ -17,20 +17,20 @@ Coming soon (2026).
 
 <!-- markdownlint-disable MD007 -->
 - [1. What It Is](#1-what-it-is)
-    - [1.1 An Agent Definition](#11-an-agent-definition)
+    - [1.1 An Agent Definition (Markdown only)](#11-an-agent-definition-markdown-only)
 - [2. How It Works](#2-how-it-works)
 - [3. Features](#3-features)
     - [3.1 Agent Runtime](#31-agent-runtime)
     - [3.2 At-Most-Once Actions](#32-at-most-once-actions)
     - [3.3 Audit and Observability](#33-audit-and-observability)
-    - [3.4 Chains of Messages](#34-chains-of-messages)
+    - [3.4 Chains of Messages (not workflows)](#34-chains-of-messages-not-workflows)
     - [3.5 Control API](#35-control-api)
     - [3.6 Costs and Budgets](#36-costs-and-budgets)
     - [3.7 Definitions and Templates](#37-definitions-and-templates)
     - [3.8 Doc Server](#38-doc-server)
     - [3.9 Durability](#39-durability)
     - [3.10 Four-Eyes Approval](#310-four-eyes-approval)
-    - [3.11 Gate](#311-gate)
+    - [3.11 Action Gate](#311-action-gate)
     - [3.12 GitOps Configuration](#312-gitops-configuration)
     - [3.13 Identity and Security](#313-identity-and-security)
     - [3.14 MCP Server](#314-mcp-server)
@@ -59,7 +59,7 @@ The **agent runtime** is the process that runs an Agent in its own pod; one Agen
 
 What it is not: a store, since it holds nothing beyond the record and the exceptions queue (Operator, below); a model host, since it ships no model and reaches every model through an adapter and every outside system through a gateway; or a service mesh, whose proxies see traffic between services but cannot keep an action to at most once.
 
-## 1.1 An Agent Definition
+## 1.1 An Agent Definition (Markdown only)
 
 ````markdown
 ---
@@ -94,25 +94,27 @@ Example: an invoice from Example Supplies Ltd, number 1042, for NZD 230.00 inclu
 | xero.create-payment | hold   | bill.payable     | client-accounts |
 ````
 
-This is the Book-Keeper, in the [definition template](docs/reference/agent-definition-template.md)'s standard layer; the template gives every field, layer by layer, and what each check refuses. It reaches Xero through the agent MCP gateway, over Xero's hosted MCP server. The install's `xero` connection, one Markdown file, declares the server's tools, the tools the rules can name, and the install declares two Principals: the script `inbox`, which publishes each supplier invoice from the accounts mailbox to `invoice.received`, and the client `accounts`, the program that sends a bill that may be paid to `bill.payable`. The Book-Keeper may create a bill for an invoice the inbox script published, and pay a bill the accounts client sent once the Operator approves. A payment proposed while handling an invoice is refused, since its rule names only `bill.payable`; so is anything for any other Principal, and everything else in Xero, because no rule lists it. An effect is one of three, fixed in the Agent Mesh: `allow`, `hold` or `refuse`.
+This is the Book-Keeper, in the definition template's standard layer; the template gives every field, layer by layer, and what each check refuses. It reaches Xero through the agent MCP gateway, over Xero's hosted [MCP](https://modelcontextprotocol.io/) server. The install's `xero` connection, one Markdown file, declares the server's tools, the tools the rules can name, and the install declares two Principals: the script `inbox`, which publishes each supplier invoice from the accounts mailbox to `invoice.received`, and the client `accounts`, the program that sends a bill that may be paid to `bill.payable`. The Book-Keeper may create a bill for an invoice the inbox script published, and pay a bill the accounts client sent once the Operator approves. A payment proposed while handling an invoice is refused, since its rule names only `bill.payable`; so is anything for any other Principal, and everything else in Xero, because no rule lists it. An effect is one of three, fixed in the Agent Mesh: `allow`, `hold` or `refuse`.
 
 ---
 
 # 2. How It Works
 
-The Operator works from the command line, which calls the control API from outside the cluster; the control API and the timer, which fires schedules and expiries, run inside it, and the three are the control plane. Each Agent is run by its own agent runtime, in its own pod: every Agent's pod runs the same two images, `darkwave/agent-runtime` and, beside it as a sidecar, `darkwave/agent-mcp-gateway`; only its definition, credentials, NATS identity and budget are its own. NATS JetStream connects them; the control plane joins the same bus. The core is the message path and the Gate; everything else plugs in at a port.
+**The Book-Keeper, the Developer, the Planner and the Jira Watcher ship with the product as examples, and none is fixed: each organisation that adopts the Agent Mesh defines its own Agents. The Agent Mesh defines no workflow; work across Agents is only a chain of messages (Chains of Messages, below).**
+
+The Operator works from the command line, which calls the control API from outside the cluster; the control API runs inside it, and the two are the control plane; schedules and expiries are NATS scheduled messages, so no process of the Agent Mesh keeps a clock for them. Each Agent is run by its own agent runtime, in its own pod: every Agent's pod runs the same two images, `darkwave/agent-runtime` and, beside it as a sidecar, `darkwave/agent-mcp-gateway`; only its definition, credentials, NATS identity and budget are its own. [NATS JetStream](https://docs.nats.io/concepts/jetstream) connects them; the control plane joins the same bus. The core is the message path and the Gate; everything else plugs in at a port.
 
 <!-- markdownlint-disable MD033 -->
 <picture>
 
 <source media="(prefers-color-scheme: dark)" srcset=".github/assets/agent-mesh-figure-dark.svg">
 
-<img alt="Read top down and left to right. Top left, outside a Kubernetes cluster, the Operator, at the command line; under the Operator, planned for v1.x, the Portal, the Operator&#x27;s surface in a browser, and the Approver, another person, who uses it; both reach the Portal in a browser. The Operator calls the control API&#x27;s Service, control-api, over REST, and the Portal will too; the Portal&#x27;s own Deployment, portal, is not drawn. At the top of the cluster, the Service passes the call to the control API, the Deployment control-api. The bus, the Service nats, runs from the control API down the cluster&#x27;s left side. Below, two example Agents, the Book-Keeper and the Developer, each a Pod kept by its Deployment, agent-book-keeper and agent-developer, with two containers: agent-runtime, from darkwave/agent-runtime, which joins the bus and calls, over a Unix socket, its sidecar agent-mcp-gateway, from darkwave/agent-mcp-gateway, which alone holds the credentials of the install&#x27;s MCP connections. Each gateway calls right, out of the cluster, over MCP and HTTPS: the Book-Keeper&#x27;s to Xero, accounting, the Developer&#x27;s to Jira, a tracker. Below the Agents, planned for v1.x: the MCP server, mcp-server, which joins the bus, and the doc server, doc-server; and the webhook ingress, ingress, which joins the bus and will take Jira&#x27;s webhooks. Lower right, a publisher, a script, reads Jira&#x27;s changes and sends them to the control API&#x27;s Service as ticket.* messages. At the bottom, the config repository, a GitOps repository, is applied to the cluster on merge." src=".github/assets/agent-mesh-figure-light.svg" width="576">
+<img alt="Read top down and left to right. Top left, outside a Kubernetes cluster, the Operator, at the command line; under the Operator, planned for v1.x, the Portal, the Operator&#x27;s surface in a browser, and the Approver, another person, who uses it; both reach the Portal in a browser. The Operator calls the control API&#x27;s Service, control-api, over REST, and the Portal will too; the Operator also works in Xero and in Jira, in a browser; the Portal&#x27;s own Deployment, portal, is not drawn. At the top of the cluster, the Service passes the call to the control API, the Deployment control-api. The bus, the Service nats, runs from the control API down the cluster&#x27;s left side. Below, two example Agents, the Book-Keeper and the Developer, each a Pod kept by its Deployment, agent-book-keeper and agent-developer, with two containers: agent-runtime, from darkwave/agent-runtime, which joins the bus and calls, over a Unix socket, its sidecar agent-mcp-gateway, from darkwave/agent-mcp-gateway, which alone holds the credentials of the install&#x27;s MCP connections. Each gateway calls right, out of the cluster, over MCP and HTTPS, to its Agent&#x27;s outside systems: the Book-Keeper&#x27;s to Xero, accounting, Gmail, mail, and Docusign, agreements; the Developer&#x27;s to GitHub, code, Slack, chat, and Jira, a tracker. Below the Agents, planned for v1.x: the MCP server, mcp-server, which joins the bus, and the doc server, doc-server; and the webhook ingress, ingress, which joins the bus and will take Jira&#x27;s webhooks. Lower right, drawn as first designed, a publisher, a script, reads Jira&#x27;s changes and sends them to the control API&#x27;s Service as ticket.* messages; the caption says that in v1.0 it is the Jira Watcher, an Agent with a script proposer in a Pod of its own, which reads Jira through its gateway and publishes on the bus. At the bottom, the config repository, a GitOps repository, is applied to the cluster on merge." src=".github/assets/agent-mesh-figure-light.svg" width="576">
 
 </picture>
 <!-- markdownlint-enable MD033 -->
 
-The Agents shown, the Book-Keeper and the Developer, are examples. Jira's part is in Planning and Dispatch Through a Tracker, below. Every message an Agent handles takes these steps in order, as far as it gets, and each step it takes is recorded.
+The outside systems the Agents reach are examples too: the Book-Keeper defined above names only Xero's tools, and reaches Gmail and Docusign only once its rules name theirs. Jira's part is an example too, of a tracker; it is in Planning and Dispatch Through a Tracker, below. Every message an Agent handles takes these steps in order, as far as it gets, and each step it takes is recorded.
 
 1. **Received.** The agent runtime takes the message from a sender whose identity has been proved, records it once, and counts the attempt against the Agent's attempt limit. The same message id from the same sender with different content is refused and recorded apart.
 2. **Checked.** The agent runtime checks the message against its contract. A message that fails the check is refused, never repaired.
@@ -147,9 +149,9 @@ Every write has a key, and a repeat under the same key changes nothing: a publis
 
 ## 3.3 Audit and Observability
 
-The record is the audit trail: every step of every handling, in order, with the Principal the work acted for, the Gate's decision and any answer from the Operator (Durability, below). `dwmesh message trace` lists one handling's entries in order. Telemetry goes through a port, Prometheus by default: each process logs one line per event to standard output and serves its metrics on its health port.
+The record is the audit trail: every step of every handling, in order, with the Principal the work acted for, the Gate's decision and any answer from the Operator (Durability, below). `dwmesh message trace` lists one handling's entries in order. Telemetry goes through a port, [Prometheus](https://prometheus.io/) by default: each process logs one line per event to standard output and serves its metrics on its health port.
 
-## 3.4 Chains of Messages
+## 3.4 Chains of Messages (not workflows)
 
 Agents talk only through messages, sent to subjects on the bus; no Agent calls another. The Agent Mesh is not a workflow engine: no flow is defined and none is driven.
 
@@ -177,7 +179,7 @@ Before a proposer is asked, the cost of the handling is estimated and checked ag
 
 ## 3.7 Definitions and Templates
 
-Agents, their rules, budgets and schedules, and the install's MCP connections, are declared in Markdown: plain text files under version control. An Agent's name is at most 32 characters. The **definitions** are those files at one merged revision; a timer fires the schedules (Schedules, below). The Agent Mesh ships the templates: an Agent's definition, with an example Agent; an MCP connection; and the Planner's definition, with an example Planner and its rules for a tracker's tools. `dwmesh definitions check` checks the definitions offline (GitOps Configuration, below).
+Agents, their rules, budgets and schedules, the subjects and their contracts, and the install's MCP connections, are declared in Markdown: plain text files under version control. An Agent's name is at most 32 characters. The **definitions** are those files at one merged revision; NATS fires the schedules (Schedules, below). The Agent Mesh ships the templates: an Agent's definition, with the Book-Keeper and the Developer as example Agents; an MCP connection; the Planner's definition, with an example Planner and its rules for a tracker's tools; and the Watcher's definition, with the Jira Watcher as its example. `dwmesh definitions check` checks the definitions offline (GitOps Configuration, below).
 
 ## 3.8 Doc Server
 
@@ -201,7 +203,7 @@ Each step of a handling is written to the record as an entry, in order, before t
 
 Planned for v1.x. An install can declare **Approvers**, people who may approve or refuse a held action, from the command line or the Portal, and nothing else. A rule can hold an action for more than one approval, `hold 2` for two. Each approval is its own entry in the record, by a different person, and no one may approve a hold on work that acts for them, or raised by an Agent of their own. The approval that completes the count approves the action; any refusal refuses it at once. Once any Approver is declared, a reload that adds, removes or changes a role or a hold's count is itself held for an Approver who is not the Operator, so four-eyes binds the Operator too. v1.0 refuses the Approver role and any hold above one.
 
-## 3.11 Gate
+## 3.11 Action Gate
 
 No action is performed unless a rule allows it, or holds it and the Operator approves and the Gate allows it again.
 
@@ -225,7 +227,7 @@ Three kinds, three paths. Settings, what a process connects to and how it runs, 
 
 Every input is checked against its written contract where it enters: shape, size and encoding, not meaning. Input that fails the check is refused and recorded, never repaired. A well-formed hostile instruction passes the check, which is why there is a Gate.
 
-Every message carries two proved identities, both **Principals**: its sender's, and the one the work acts for, which is whoever started the chain of messages the work is. Each is proved where the message enters, by the connection for an Agent's own messages and by the control API, the service the command line calls, for a person's or a program's, and never read from the payload. A person signs in through the install's own identity provider, as one Principal on every surface; how a program proves itself to the control API is published with v1.0. The Gate decides for the Principal the work acts for. A program at the command line runs under its own Principal, and the control API accepts an Operator-only command from the Operator's own identity alone.
+Every message carries two proved identities, both **Principals**: its sender's, and the one the work acts for, which is whoever started the chain of messages the work is. Each is proved where the message enters, by the connection for an Agent's own messages and by the control API, the service the command line calls, for a person's or a program's, and never read from the payload. A person signs in through the install's own identity provider, as one Principal on every surface; a program proves itself to the control API by a credential issued at its enrolment. The Gate decides for the Principal the work acts for. A program at the command line runs under its own Principal, and the control API accepts an Operator-only command from the Operator's own identity alone.
 
 On the bus, each message's subject carries its sender, and NATS lets each connection publish only where the permissions generated from the definitions allow, so the bus itself proves who sent a message. Every connection to NATS uses mutual TLS. Each process writes the record under its own identity, and only the keys its work needs: an Agent's own handlings, and for the control API a person's proposal or a stated outcome. The record is append-only: the server is configured to refuse deletes and rewrites, and encryption at rest is the volume's. Secrets are read by adapters and the agent MCP gateway only, never by the core; the MCP connections' credentials are mounted into the gateway's container alone.
 
@@ -251,15 +253,15 @@ The Portal, planned for v1.x, is a second surface for the Operator (Portal, belo
 
 ## 3.16 Outside Systems
 
-Outside systems are reached through the agent MCP gateway. The Agent Mesh ships one agent MCP gateway, which runs as a sidecar container beside the agent runtime in each Agent's pod and holds the connections' credentials, and each outside system is an install's MCP connection: one Markdown file that declares the system's tools over its vendor's MCP server, documented in full and pinned to what the server serves. Its tools are the tools the rules can name, and each use of one is an action the Gate decides.
+Outside systems are reached through the agent MCP gateway. The Agent Mesh ships one agent MCP gateway, which runs as a sidecar container beside the agent runtime in each Agent's pod and holds the connections' credentials, and each outside system is an install's MCP connection: one Markdown file that declares the system's tools over its vendor's MCP server, documented in full and pinned to what the server serves. Its tools are the tools the rules can name, and the Gate decides each use of one.
 
 A gateway passes the action id on where the system takes one, times out before the intent's lease runs out, and answers succeeded, failed only when the action certainly did not happen, or nothing when unsure; the at-most-once guarantee rests on that contract, and the conformance kit tests it.
 
 ## 3.17 Planning and Dispatch Through a Tracker
 
-The Operator and the Agents hand work to each other through tickets in a tracker, Jira for example, the first the Agent Mesh fits. The **Planner** is a role the Agent Mesh ships for this: a definition template and an example Planner, with its rules for the tracker's tools. The Planner raises, assigns and ranks tickets under those rules, which can hold an action for the Operator like any other. Assignment is the dispatch: an Agent takes up a ticket when its assignment reaches it as a message, and the Agent Mesh drives no sequence of its own.
+The Operator and the Agents hand work to each other through tickets in a tracker, Jira for example, the first the Agent Mesh fits. The Agent Mesh ships two roles for this, each a definition template with an example: the **Planner**, with its rules for the tracker's tools, and the **Watcher**, whose example is the Jira Watcher. The Planner raises, assigns and ranks tickets under those rules, which can hold an action for the Operator like any other. Assignment is the dispatch: an Agent takes up a ticket when its assignment reaches it as a message, and the Agent Mesh drives no sequence of its own.
 
-Out, an Agent reaches the tracker through the agent MCP gateway, over the tracker's MCP server; the install declares the tracker's tools in its connection, and each use of a tool is an action the Gate decides. In, the tracker's changes reach the Agents as messages on the `ticket.*` subjects, published by a script in v1.0 and by the webhook ingress, planned for v1.x. Any tracker fits the same pattern: an MCP connection out and a publisher in.
+Out, an Agent reaches the tracker through the agent MCP gateway, over the tracker's MCP server; the install declares the tracker's tools in its connection, and the Gate decides each use of a tool. In, Jira's changes reach the Agents as messages on the `ticket.*` subjects, published by the Jira Watcher, an Agent with a script proposer, in v1.0, and by the webhook ingress, planned for v1.x. On each firing of its schedule, the Jira Watcher reads what has changed in Jira through its own agent MCP gateway, and its one action publishes those changes, in order, as `ticket.*` messages. Any tracker fits the same pattern: an MCP connection out and a Watcher in.
 
 There are two waits, each kept in its own record. An action the Gate holds waits in the exceptions queue, in the Agent Mesh's record, and is answered through the control API. A ticket passed to the Operator waits in the tracker, in the tracker's history; the Operator answers there, and the answer comes back as a new message that starts a new handling. Nothing in the tracker enters the exceptions queue.
 
@@ -268,7 +270,7 @@ There are two waits, each kept in its own record. An action the Gate holds waits
 
 <source media="(prefers-color-scheme: dark)" srcset=".github/assets/agent-mesh-planning-dark.svg">
 
-<img alt="A UML sequence diagram, read top to bottom, with six lifelines: the Planner, the agent MCP gateway, Jira, the publisher, the Developer and the Operator. The Planner assigns a ticket in Jira, through the agent MCP gateway. The publisher reads the change and publishes it, through the control API, as a ticket.* message, which reaches the Developer. The Developer works the ticket and passes it to the Operator in Jira, through the agent MCP gateway, and the Operator answers there. The publisher reads that change and brings the answer back to the Developer as a new message. Each Agent calls its own gateway, and the publisher sends each message through the control API. A note says the tracker&#x27;s wait is in its own history, and nothing enters the exceptions queue." src=".github/assets/agent-mesh-planning-light.svg" width="576">
+<img alt="A UML sequence diagram, read top to bottom, with six lifelines: the Planner, the agent MCP gateway, Jira, the Jira Watcher, the Developer and the Operator. The Planner assigns a ticket in Jira, through the agent MCP gateway. The Jira Watcher reads the change through the agent MCP gateway and publishes it as a ticket.* message, which reaches the Developer. The Developer works the ticket and passes it to the Operator in Jira, through the agent MCP gateway, and the Operator answers there. The Jira Watcher reads that change the same way and brings the answer back to the Developer as a new message. The Planner, the Jira Watcher and the Developer are Agents, the Jira Watcher&#x27;s proposer a script; each Agent calls its own gateway, and the Jira Watcher publishes on the bus. A note says the tracker&#x27;s wait is in its own history, and nothing enters the exceptions queue." src=".github/assets/agent-mesh-planning-light.svg" width="576">
 
 </picture>
 <!-- markdownlint-enable MD033 -->
@@ -283,15 +285,15 @@ Each Agent has one **proposer**, which proposes one action for each message. A p
 
 ## 3.20 Schedules
 
-A schedule, declared in the definitions, sends a message at its times. The timer, its own process in the cluster, fires scheduled messages and the expiries of unanswered approvals and proposals asked. Each scheduled message is keyed by its schedule, version and fire time, so it is sent once (At-Most-Once Actions, above).
+A schedule, declared in the definitions, sends a message at its times, at an interval or by a cron expression in its time zone. Schedules and the expiries of unanswered approvals and proposals asked are NATS JetStream scheduled messages: the control API sets them, and NATS fires them, so the Agent Mesh keeps no clock of its own for them. Each fired message is keyed by its schedule, version and next fire time, so a repeat is acted on once (At-Most-Once Actions, above); an interval schedule fired again late can get a new key, and a reload restarts its interval.
 
 ## 3.21 Supported Platforms
 
-v1.0 supports three platforms, each with its own guide: kind, for CI and local work; K3s, on a single server; and Amazon EKS, across three zones. A platform is supported when it meets the cluster's contract and the conformance runs pass on it. The contract: a supported Kubernetes minor version, a network plugin that enforces network policies, volumes for NATS that honour fsync, Pod Security's restricted profile, the Gateway API or a port-forward to reach the control API, and nodes that are amd64 or arm64.
+v1.0 supports three platforms, each with its own guide: kind, for CI and local work; K3s, on a single server; and Amazon EKS, across three zones. A platform is supported when it meets the cluster's contract and the conformance runs pass on it. The contract: a supported Kubernetes minor version, NATS Server 2.14 or later, a network plugin that enforces network policies, volumes for NATS that honour fsync, Pod Security's restricted profile, the Gateway API or a port-forward to reach the control API, and nodes that are amd64 or arm64.
 
 ## 3.22 Verified by Specification
 
-The message path is specified in TLA+, a language for specifying systems, and model-checked within its model's stated limits; v1.0 runs the checks in CI. A scenario suite, scripted from the specification's sequences, runs against the code. Each guarantee has an ID; a proof map names the TLA+ property, test suite or stated assumption behind it, and its limits, and a test that checks it carries the same ID where there is one.
+The message path is specified in [TLA+](https://lamport.azurewebsites.net/tla/tla.html), a language for specifying systems, and model-checked within its model's stated limits; v1.0 runs the checks in CI. A scenario suite, scripted from the specification's sequences, runs against the code. Each guarantee has an ID; a proof map names the TLA+ property, test suite or stated assumption behind it, and its limits, and a test that checks it carries the same ID where there is one.
 
 ---
 
@@ -322,13 +324,26 @@ After v1.0, the doc server adds `dwmesh doc search`, which returns what an Agent
 
 Models, the bus, the record store, the rule rows, telemetry and secrets plug in at **ports**: interfaces the core, the message path and the Gate, defines and an adapter implements. One conformance kit tests every adapter of a port against the same contract.
 
-There are three ways to extend an install: two are files, and one is an adapter, built into a release.
+There are four ways to extend an install: two are files, and two are development, a custom MCP server of the install's own and a custom Rust adapter built into a release.
 
 - **Add an Agent**: one Markdown file, as above. It takes effect at the next reload of the definitions.
 - **Connect a system**: one Markdown file, an MCP connection; the gateway, a container of its own, needs no change (Outside Systems, above).
-- **Swap a part**: a model provider, the bus, the record store, the rule rows, telemetry or secrets, each an adapter of a port, which passes the conformance kit before it is trusted.
+- **Build an MCP server**: custom development, in any language, for a system that has no MCP server of its own. The install runs it, and connects it with one Markdown file like any other; it answers as the gateway's contract needs, taking the action id where it can and reporting a failure only when the action certainly did not happen (Outside Systems, above). It is not the Agent Mesh's own MCP Server (MCP Server, above).
+- **Swap a part**: custom Rust development. A model provider, the bus, the record store, the rule rows, telemetry or secrets is each an adapter of a port: a Rust crate that implements the port's trait, built into a release, which passes the conformance kit before it is trusted.
 
-Nothing in the core changes for any of the three.
+Nothing in the core changes for any of the four.
+
+<!-- markdownlint-disable MD033 -->
+<picture>
+
+<source media="(prefers-color-scheme: dark)" srcset=".github/assets/agent-mesh-extending-dark.svg">
+
+<img alt="Read left to right. On the left, the core: the domain and the message path, plain Rust, which depends only on its ports. In the middle, seven of its ports, the Rust traits it defines: Proposer, Bus, Record (RecordWriter and RecordReader), Gate, TelemetryWriter, SecretReader and ActionGateway; the core calls each. On the right, the adapter that implements each port and ships with the Agent Mesh: a model provider, which may instead be a script or a person; NATS JetStream for the bus and for the record; rule rows for the Gate; Prometheus for telemetry; Kubernetes Secrets for secrets; and the agent MCP gateway, a sidecar container, for actions. Above the core, an Agent definition, a Markdown file the install supplies, is loaded on reload. Below the ports, an MCP connection, a Markdown file the install supplies, is read by the gateway. Below the gateway, the two kinds of MCP server it calls over MCP: a vendor&#x27;s, outside the mesh, and the install&#x27;s own. The captions say that each adapter implements one port and passes the conformance kit; that an Agent and a connection are Markdown files read at a reload; that swapping a part is a Rust crate of the install&#x27;s own built into a release; and that an MCP server of the install&#x27;s own, in any language, is reached like a vendor&#x27;s." src=".github/assets/agent-mesh-extending-light.svg" width="576">
+
+</picture>
+<!-- markdownlint-enable MD033 -->
+
+Three parts of v1.0 are still being designed: a proposer's reads, read-only tool calls it makes through its Agent's gateway before it proposes, each allowed by a rule and recorded, and never the handling's one action, such as the Jira Watcher's reads of Jira (Planning and Dispatch Through a Tracker, above); an action that publishes several messages, such as the Jira Watcher's; and the gateway's contract over its socket, which the conformance kit will test.
 
 ---
 
@@ -337,8 +352,9 @@ Nothing in the core changes for any of the three.
 - The message path, specified in TLA+ and model-checked in CI, with the scenario suite and the proof map
 - The Gate, with rule rows as its first adapter
 - The exceptions queue: approvals, problems and proposals asked, answered by the Operator
-- Agents, rules, budgets and schedules declared in Markdown, with a definition template and an example Agent
+- Agents, rules, budgets and schedules declared in Markdown, with a definition template and example Agents, the Book-Keeper and the Developer
 - The Planner's definition template and example, with its rules for a tracker's tools
+- The Watcher's definition template, with the Jira Watcher as its example, which publishes Jira's changes as `ticket.*` messages
 - One agent MCP gateway, with a template for an install's connections, run as a sidecar container in each Agent's pod
 - The agent runtime: one process per Agent, in its own pod on Kubernetes, beside its agent MCP gateway, with recovery from the record and an attempt limit
 - A REST control API and the command line, `dwmesh`, with authentication
@@ -385,6 +401,6 @@ Contributions are not taken before v1.0. How they are taken from then on is in `
 
 Licensed under the Apache License 2.0; see [LICENSE](LICENSE).
 
-Xero, Claude, Jira, Kubernetes, K3s, Amazon EKS, NATS and Prometheus are trademarks of their owners; the Agent Mesh is not affiliated with or endorsed by them. The Rust logo is a trademark of the Rust Foundation, shown under CC BY 4.0 to say what the Agent Mesh is written in; the Rust project endorses nothing here. The figures' Kubernetes icons are from the Kubernetes Icons Set, under the Apache License 2.0.
+Xero, Gmail, Docusign, GitHub, Slack, Claude, Jira, Kubernetes, K3s, Amazon EKS, NATS, Prometheus, Flux and Argo CD are trademarks of their owners; the Agent Mesh is not affiliated with or endorsed by them. The Rust logo is a trademark of the Rust Foundation, shown under CC BY 4.0 to say what the Agent Mesh is written in; the Rust project endorses nothing here. The figures' Kubernetes icons are from the Kubernetes Icons Set, under the Apache License 2.0.
 
 © 2026 Darkwave Trading Limited

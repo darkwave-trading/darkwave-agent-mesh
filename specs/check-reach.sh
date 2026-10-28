@@ -10,7 +10,7 @@ check() { # spec, its configuration, then its reachability invariants
     cfg=$(mktemp --suffix=.cfg)
     sed -e '/^INVARIANTS/d' -e '/^PROPERTIES/d' "specs/$conf.cfg" > "$cfg"
     echo "INVARIANT $inv" >> "$cfg"
-    if java -cp "$jar" tlc2.TLC -workers auto -noGenerateSpecTE -metadir "$(mktemp -d)" -config "$cfg" "specs/$spec.tla" 2>&1 | grep -q "Invariant $inv is violated"; then
+    if java -cp "$jar" tlc2.TLC -workers auto -metadir "$(mktemp -d)" -config "$cfg" "specs/$spec.tla" 2>&1 | grep -q "Invariant $inv is violated"; then
       echo "ok   $conf: $inv is violated (path reachable)"
     else
       echo "FAIL $conf: $inv holds: the path is not reachable"; fail=1
