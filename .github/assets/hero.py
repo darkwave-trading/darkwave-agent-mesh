@@ -1,5 +1,5 @@
 """The Agent Mesh README banner: one wordmark, built with the Darkwave logo's own recipe
-(darkwave-trading, brand/tools/logo.py, function logo), AGENT MESH in place of TRADING, in brand blue.
+(darkwave, brand/tools/logo.py, function logo), AGENT MESH in place of TRADING, in brand blue.
 
 Needs fontTools and brotli; Michroma is in fonts/ beside this file.
 Run: python3 hero.py <out dir>"""

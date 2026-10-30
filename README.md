@@ -17,7 +17,7 @@ Coming soon (2026).
 
 <!-- markdownlint-disable MD007 -->
 - [1. What It Is](#1-what-it-is)
-    - [1.1 An Agent Definition (Markdown only)](#11-an-agent-definition-markdown-only)
+    - [1.1 An Agent Definition (markdown only)](#11-an-agent-definition-markdown-only)
 - [2. How It Works](#2-how-it-works)
 - [3. Features](#3-features)
     - [3.1 Agent Runtime](#31-agent-runtime)
@@ -61,7 +61,7 @@ The **agent runtime** is the process that runs an Agent in its own pod; one Agen
 
 What it is not: a store, since it holds nothing beyond the record and the exceptions queue (Operator, below); a model host, since it ships no model and reaches every model through an adapter and every outside system through a gateway; or a service mesh, whose proxies see traffic between services but cannot keep an action to at most once.
 
-## 1.1 An Agent Definition (Markdown only)
+## 1.1 An Agent Definition (markdown only)
 
 ````markdown
 ---
@@ -185,7 +185,7 @@ Before a proposer is asked, the cost of the handling is estimated and checked ag
 
 ## 3.8 Definitions and Templates
 
-Agents, their rules, budgets and schedules, the subjects and their contracts, and the install's MCP connections, are declared in Markdown: plain text files under version control. An Agent's name is at most 32 characters. The **definitions** are those files at one merged revision; NATS fires the schedules (Schedules, below). The Agent Mesh ships the templates: an Agent's definition, with the Book-Keeper and the Developer as example Agents; an MCP connection; the Planner's definition, with an example Planner and its rules for a tracker's tools; and the Watcher's definition, with the Jira Watcher as its example. `dwmesh definitions check` checks the definitions offline (GitOps Configuration, below).
+Agents, their rules and budgets, the schedules, the subjects and their contracts, and the install's MCP connections, are declared in Markdown: plain text files under version control. An Agent's name is at most 32 characters. The **definitions** are those files at one merged revision; NATS fires the schedules (Schedules, below). The Agent Mesh ships the templates. In three layers, minimal, standard and full: an Agent's definition, with the subjects it may publish to, and the Book-Keeper and the Developer as example Agents; its instructions; a subject, with its contract and its publishers; a Principal; a schedule; the price table; and the definitions folder. Beside them: an MCP connection; the Planner's definition, with an example Planner and its rules for a tracker's tools; and the Watcher's definition, with the Jira Watcher as its example. Who may publish to a subject is declared on both sides, the subject and its publisher, so widening it takes both in one reviewed change. `dwmesh definitions check` checks the definitions offline (GitOps Configuration, below).
 
 ## 3.9 Doc Server
 
